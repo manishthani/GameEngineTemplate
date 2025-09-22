@@ -10,8 +10,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)       # optional: disable compiler-specific extens
 project (GameEngineTemplate)
 
 find_package(glm CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
 
 # Add source to this project's executable.
 add_executable (GameEngineTemplate GameEngineTemplate.cpp)
 
 target_link_libraries(GameEngineTemplate PRIVATE glm::glm)
+target_link_libraries(GameEngineTemplate PRIVATE SDL3::SDL3)
