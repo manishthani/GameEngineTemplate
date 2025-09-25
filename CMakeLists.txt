@@ -11,9 +11,18 @@ project (GameEngineTemplate)
 
 find_package(glm CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(glad CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 # Add source to this project's executable.
-add_executable (GameEngineTemplate GameEngineTemplate.cpp)
+add_executable (${PROJECT_NAME} GameEngineTemplate.cpp)
 
-target_link_libraries(GameEngineTemplate PRIVATE glm::glm)
-target_link_libraries(GameEngineTemplate PRIVATE SDL3::SDL3)
+target_link_libraries(${PROJECT_NAME} PRIVATE glm::glm)
+target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${OPENGL_LIBRARIES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${OPENGL_INCLUDE_DIR})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE glad::glad)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui)
