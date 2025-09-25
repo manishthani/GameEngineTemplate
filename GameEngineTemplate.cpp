@@ -14,6 +14,23 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
+// Setup VS and PS in GLSL
+const char* vertexShaderSource = "\n"
+"#version 460 core\n"
+"layout (location = 0) in vec3 aPos;\n"
+"void main()\n"
+"{\n"
+"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+"}\0";
+
+const char* fragmentShaderSource = "\n"
+"#version 460 core\n"
+"out vec4 FragColor;\n"
+"void main()\n"
+"{\n"
+"   FragColor = vec4(0.8f, 0.3f, 0.02f, 1.0f);\n"
+"}\0";
+
 int main()
 {
     // Window Resolution
@@ -26,9 +43,9 @@ int main()
         return -1;
     }
 
-    // Setup Min/Major version for using OpenGL 4
+    // Setup Min/Major version for using OpenGL 4.6
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 
     // Set Core Profile Mode
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -74,6 +91,56 @@ int main()
     ImGui_ImplSDL3_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init();
 
+    // Create & compile vertex and fragment shaders
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+
+    // Create Program and bind shaders
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    // Delete shaders since we've created a program already and they are contained there
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    // Create Triangle Data
+    GLfloat vertices[] =
+    {
+        -0.5f, -0.5f * float(sqrt(3)) / 3, 0.0f,
+        0.5f, -0.5f * float(sqrt(3)) / 3, 0.0f,
+        0.0f, 0.5f * float(sqrt(3)) * 2 / 3, 0.0f
+    };
+
+    // Create VAO & VBO
+    GLuint VAO;
+    glGenVertexArrays(1, &VAO);
+
+    GLuint VBO;
+    glGenBuffers(1, &VBO);
+
+    // Bind VAO and VBO
+    glBindVertexArray(VAO);
+
+    // Link GL_ARRAY_BUFFER to vertices data
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // Define Vertex layout and set attribute index
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Unlink VAO
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
     bool isRunning = true;
     while (isRunning)
     {
@@ -118,6 +185,13 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // RENDER
+        // Use shader program & bind VAO
+        glUseProgram(shaderProgram);
+        glBindVertexArray(VAO);
+
+        // Specify primitive type and vertex count
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
@@ -135,6 +209,11 @@ int main()
         // FRAME CONTROL
         // [...]
     }
+
+    // Delete VAO, VBO and shader program
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteProgram(shaderProgram);
 
     // Deinit ImGui
     ImGui_ImplOpenGL3_Shutdown();
