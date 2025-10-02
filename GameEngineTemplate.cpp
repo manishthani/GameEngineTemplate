@@ -17,18 +17,23 @@
 // Setup VS and PS in GLSL
 const char* vertexShaderSource = "\n"
 "#version 460 core\n"
-"layout (location = 0) in vec3 aPos;\n"
+"layout (location = 0) in vec3 inPos;\n"
+"layout (location = 1) in vec3 inColor;\n"
+"out vec3 vertexColor;\n"
+"uniform mat4 modelViewProj;\n"
 "void main()\n"
 "{\n"
-"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+"gl_Position = modelViewProj * vec4(inPos, 1.0);\n"
+"vertexColor = inColor;\n"
 "}\0";
 
 const char* fragmentShaderSource = "\n"
 "#version 460 core\n"
+"in vec3 vertexColor;\n"
 "out vec4 FragColor;\n"
 "void main()\n"
 "{\n"
-"   FragColor = vec4(0.8f, 0.3f, 0.02f, 1.0f);\n"
+"   FragColor = vec4(vertexColor, 1.0f);\n"
 "}\0";
 
 int main()
@@ -110,23 +115,59 @@ int main()
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    // Create Triangle Data
-    GLfloat vertices[] =
+    // Local Space
+    GLfloat cubeVertices[]
     {
-        -0.5f, -0.5f * float(sqrt(3)) / 3, 0.0f,
-        0.5f, -0.5f * float(sqrt(3)) / 3, 0.0f,
-        0.0f, 0.5f * float(sqrt(3)) * 2 / 3, 0.0f,
-        -0.5f / 2, 0.5f * float(sqrt(3)) / 6, 0.0f,
-        0.5f / 2, 0.5f * float(sqrt(3)) / 6, 0.0f,
-        0.0f, -0.5f * float(sqrt(3)) / 3, 0.0f
+    //  Position                Color
+        -0.5f, -0.5f, -0.5f,    1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,     0.0f, 1.0f, 0.0f,
+        0.5f, 0.5f, -0.5f,      0.0f, 0.0f, 1.0f,
+        -0.5f, 0.5f, -0.5f,     1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, 0.5f,     0.0f, 1.0f, 1.0f,
+        0.5f, -0.5f, 0.5f,      1.0f, 1.0f, 0.0f,
+        0.5f, 0.5f, 0.5f,       1.0f, 0.0f, 1.0f,
+        -0.5f, 0.5f, 0.5f,      1.0f, 1.0f, 1.0f,
     };
 
-    GLuint indices[] =
+    const unsigned int NUM_INDICES = 36;
+    GLuint cubeIndices[]
     {
-        0, 3, 5,
-        3, 2, 4,
-        5, 4, 1
+        // Top face
+        3, 2, 6,
+        6, 7, 3,
+        // Bottom face
+        0, 1, 5,
+        5, 4, 0,
+        // Left face
+        0, 4, 7,
+        7, 3, 0,
+        // Right face
+        1, 5, 6,
+        6, 2, 1,
+        // Back face
+        0, 1, 2,
+        2, 3, 0,
+        // Front face
+        4, 5, 6,
+        6, 7, 4,
     };
+
+    // View Matrix
+    glm::vec3 position(0.0f, 0.0f, -5.0f);
+    glm::vec3 forward(0.0f, 0.0f, 1.0f);
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    glm::mat4 viewMatrix = glm::lookAt(position             // Camera Position
+                                     , position + forward   // Target Position
+                                     , up);                 // Up Vector
+    // Projection Matrix
+    const float FOV = 45.0f;
+    const float NEAR_PLANE = 0.1f;
+    const float FAR_PLANE = 100.0f;
+    glm::mat4 projectionMatrix = glm::perspective(glm::radians(FOV), static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT), NEAR_PLANE, FAR_PLANE);
+
+
+    // Create ModelViewProjection matrix
+    GLuint modelViewProjLocation = glGetUniformLocation(shaderProgram, "modelViewProj");
 
     // Create VAO & VBO & EBO
     GLuint VAO;
@@ -143,20 +184,32 @@ int main()
 
     // Link GL_ARRAY_BUFFER to vertices data
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
 
     // Link GL_ELEMENT_ARRAY_BUFFER to indices data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIndices), cubeIndices, GL_STATIC_DRAW);
 
     // Define Vertex layout and set attribute index
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
 
     // Unlink VAO
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    // Enable depth test
+    glEnable(GL_DEPTH_TEST);
+
+    // Rotate the cube over time
+    SDL_Time prevTime;
+    SDL_GetCurrentTime(&prevTime);
+    float rotation = 0.0f;
+    const float SPEED = 100.0f;
 
     bool isRunning = true;
     while (isRunning)
@@ -192,7 +245,18 @@ int main()
         }
 
         // UPDATE
-        // [...]
+        // Model Matrix
+        glm::mat4 modelMatrix(1.0f);
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 modelViewProj = projectionMatrix * viewMatrix * modelMatrix;
+
+        // Perform Rotation
+        SDL_Time currentTime;
+        SDL_GetCurrentTime(&currentTime);
+
+        const float dt = (currentTime - prevTime) / 1000000000.0f;
+        rotation += SPEED * dt;
+        prevTime = currentTime;
 
         // RENDER
         // Clear screen color
@@ -204,10 +268,12 @@ int main()
         // RENDER
         // Use shader program & bind VAO
         glUseProgram(shaderProgram);
+        glUniformMatrix4fv (modelViewProjLocation, 1, GL_FALSE, glm::value_ptr(modelViewProj));
+
         glBindVertexArray(VAO);
 
         // Specify primitive type and vertex count
-        glDrawElements(GL_TRIANGLES, 9, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, 0);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
