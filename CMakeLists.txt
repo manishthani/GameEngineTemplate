@@ -26,3 +26,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${OPENGL_INCLUDE_DIR})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE glad::glad)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui)
+
+# For generating the release, we need to copy assets folder to build folder
+file(COPY ${CMAKE_SOURCE_DIR}/Data DESTINATION ${CMAKE_BINARY_DIR})
