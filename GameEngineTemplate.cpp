@@ -36,6 +36,58 @@ const char* fragmentShaderSource = "\n"
 "   FragColor = vec4(vertexColor, 1.0f);\n"
 "}\0";
 
+struct FrameBufferObject
+{
+    GLuint FBO_ID = 0;
+    GLuint RENDER_TO_TEXTURE_ID = 0;
+    GLuint RBO_DEPTH_STENCIL_ID = 0;
+
+};
+
+void CreateFBO(int width, int height, FrameBufferObject& frameBufferObject, bool recreate)
+{
+    // Create frame buffer object if it didnt exist
+    if (frameBufferObject.FBO_ID == 0)
+    {
+        // Create FrameBuffer objects
+        glGenFramebuffers(1, &frameBufferObject.FBO_ID);
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBufferObject.FBO_ID);
+
+        glGenTextures(1, &frameBufferObject.RENDER_TO_TEXTURE_ID);
+        glBindTexture(GL_TEXTURE_2D, frameBufferObject.RENDER_TO_TEXTURE_ID);
+
+        glGenRenderbuffers(1, &frameBufferObject.RBO_DEPTH_STENCIL_ID);
+        glBindRenderbuffer(GL_RENDERBUFFER, frameBufferObject.RBO_DEPTH_STENCIL_ID);
+
+        // Setup texture filtering params
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // Attach color + depth&stencil buffers
+        // We can attach more than one color fragment shader output simultanously. For our purpose, we only attach one. 
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferObject.RENDER_TO_TEXTURE_ID, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, frameBufferObject.RBO_DEPTH_STENCIL_ID);
+    }
+
+    // Bind Render to Texture for resizing
+    glBindTexture(GL_TEXTURE_2D, frameBufferObject.RENDER_TO_TEXTURE_ID);
+    // glTexImage2D only reallocates color data within GPU memory inside existing ID
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    // Bind Depth&Stencil for resizing
+    glBindRenderbuffer(GL_RENDERBUFFER, frameBufferObject.RBO_DEPTH_STENCIL_ID);
+    // glRenderbufferStorage only reallocates depth&stencil data within GPU memory inside existing ID
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+
+    // Validation for creation/reuse of frame buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, frameBufferObject.FBO_ID);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "Frame buffer incomplete" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 int main()
 {
     // Window Resolution
@@ -212,6 +264,11 @@ int main()
     const float SPEED = 100.0f;
 
     bool isRunning = true;
+    FrameBufferObject frameBufferObject;
+    CreateFBO(SCREEN_WIDTH, SCREEN_HEIGHT, frameBufferObject, false);
+    ImVec2 sceneWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+    bool shouldRefreshSceneWindow = false;
+
     while (isRunning)
     {
         // INPUT
@@ -258,12 +315,30 @@ int main()
         rotation += SPEED * dt;
         prevTime = currentTime;
 
-        // RENDER
         // Clear screen color
         glClearColor(0.1f, 0.2f, 0.2f, 1.0f);
 
         // Clear Color Buffer and Depth Buffer
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // RENDER TO TEXTURE
+        if (shouldRefreshSceneWindow)
+        {
+            CreateFBO(sceneWindowSize.x, sceneWindowSize.y, frameBufferObject, true);
+            shouldRefreshSceneWindow = false;
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBufferObject.FBO_ID);
+        GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+        glDrawBuffers(1, drawBuffers);
+
+        glViewport(0, 0, sceneWindowSize.x, sceneWindowSize.y);
+        
+        // Clear screen color from render to texture
+        glClearColor(0.0f, 0.1f, 0.1f, 1.0f);
+
+        // Clear Color Buffer and Depth Buffer from render to texture
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // RENDER
         // Use shader program & bind VAO
@@ -275,11 +350,23 @@ int main()
         // Specify primitive type and vertex count
         glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, 0);
 
+        // Unbind frame buffer, back to default
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
         // Show sample demo from ImGui
+        ImGui::Begin("Scene");
+        ImVec2 newSceneWindowSize = ImGui::GetWindowSize();
+        shouldRefreshSceneWindow = (newSceneWindowSize.x != sceneWindowSize.x || newSceneWindowSize.y != sceneWindowSize.y);
+        sceneWindowSize = newSceneWindowSize;
+
+        ImGui::Image(frameBufferObject.RENDER_TO_TEXTURE_ID, sceneWindowSize, ImVec2(0, 1), ImVec2(1, 0));
+
+        ImGui::End();
+
         ImGui::ShowDemoWindow();
 
         // Render ImGui
