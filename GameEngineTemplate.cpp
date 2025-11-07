@@ -30,10 +30,11 @@ const char* vertexShaderSource = "\n"
 const char* fragmentShaderSource = "\n"
 "#version 460 core\n"
 "in vec3 vertexColor;\n"
+"uniform float isOutline;\n"
 "out vec4 FragColor;\n"
 "void main()\n"
 "{\n"
-"   FragColor = vec4(vertexColor, 1.0f);\n"
+"   FragColor = vec4(vertexColor, 1.0f) + vec4(isOutline, isOutline, isOutline, isOutline);\n"
 "}\0";
 
 struct FrameBufferObject
@@ -220,6 +221,7 @@ int main()
 
     // Create ModelViewProjection matrix
     GLuint modelViewProjLocation = glGetUniformLocation(shaderProgram, "modelViewProj");
+    GLint isOutlineLocation = glGetUniformLocation(shaderProgram, "isOutline");
 
     // Create VAO & VBO & EBO
     GLuint VAO;
@@ -334,6 +336,12 @@ int main()
 
         glViewport(0, 0, sceneWindowSize.x, sceneWindowSize.y);
         
+        // Enable depth test
+        glEnable(GL_DEPTH_TEST);
+
+        // Enable Stencil test
+        glEnable(GL_STENCIL_TEST);
+
         // Clear screen color from render to texture
         glClearColor(0.0f, 0.1f, 0.1f, 1.0f);
 
@@ -341,14 +349,46 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // RENDER
+        // 1. We write value 1 to stencil buffer for all fragments that pass
+        // It will only write if depth test passes, this is why we use stencil 
+        // for outlining to avoid wrong visuals when other objects are in front
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        // Enable write to stencil
+        glStencilMask(0xFF);
+
         // Use shader program & bind VAO
         glUseProgram(shaderProgram);
         glUniformMatrix4fv (modelViewProjLocation, 1, GL_FALSE, glm::value_ptr(modelViewProj));
+        glUniform1f(isOutlineLocation, 0.0f);  // set the value
 
         glBindVertexArray(VAO);
 
-        // Specify primitive type and vertex count
+        // 2. Render the first cube
         glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, 0);
+
+        // 3. We will compare when rendering 2nd cube if there's value 1 to stencil buffer for all fragments that pass
+        // Only write outline to value != 1
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+
+        // Disable write to stencil, we don't need to do that for 2nd cube
+        glStencilMask(0x00);
+
+        // 4. Draw Second Cube with higher scale, and update uniform so that its color is white
+        modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(1.1f, 1.1f, 1.1f));
+
+        modelViewProj = projectionMatrix * viewMatrix * modelMatrix;
+
+        glUniformMatrix4fv(modelViewProjLocation, 1, GL_FALSE, glm::value_ptr(modelViewProj));
+        glUniform1f(isOutlineLocation, 1.0f);  // set the value
+        glDrawElements(GL_TRIANGLES, NUM_INDICES, GL_UNSIGNED_INT, 0);
+
+        // 5. Restore previous state
+        glStencilMask(0xFF);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_STENCIL_TEST);
 
         // Unbind frame buffer, back to default
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
