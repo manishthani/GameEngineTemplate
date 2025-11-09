@@ -14,6 +14,8 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
+#include "ImGuizmo.h"
+
 // Setup VS and PS in GLSL
 const char* vertexShaderSource = "\n"
 "#version 460 core\n"
@@ -396,15 +398,27 @@ int main()
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
 
-        // Show sample demo from ImGui
-        ImGui::Begin("Scene");
-        ImVec2 newSceneWindowSize = ImGui::GetWindowSize();
+        const bool gizmoActive = ImGuizmo::IsOver() || ImGuizmo::IsUsing();
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+        if (gizmoActive)
+        {
+            flags |= ImGuiWindowFlags_NoMove;
+        }
+
+        ImGui::Begin("Scene", nullptr, flags);
+        ImVec2 cursorScreenPos = ImGui::GetCursorScreenPos();
+        ImVec2 newSceneWindowSize = ImGui::GetContentRegionAvail();
         shouldRefreshSceneWindow = (newSceneWindowSize.x != sceneWindowSize.x || newSceneWindowSize.y != sceneWindowSize.y);
         sceneWindowSize = newSceneWindowSize;
+        ImGui::Image(frameBufferObject.RENDER_TO_TEXTURE_ID, newSceneWindowSize, ImVec2(0, 1), ImVec2(1, 0));
 
-        ImGui::Image(frameBufferObject.RENDER_TO_TEXTURE_ID, sceneWindowSize, ImVec2(0, 1), ImVec2(1, 0));
-
+        glDisable(GL_DEPTH_TEST);
+        ImGuizmo::SetRect(cursorScreenPos.x, cursorScreenPos.y, newSceneWindowSize.x, newSceneWindowSize.y);
+        ImGuizmo::SetDrawlist();
+        ImGuizmo::Manipulate(glm::value_ptr(viewMatrix), glm::value_ptr(projectionMatrix), ImGuizmo::TRANSLATE, ImGuizmo::WORLD, glm::value_ptr(modelMatrix));
+        glEnable(GL_DEPTH_TEST);
         ImGui::End();
 
         ImGui::ShowDemoWindow();
